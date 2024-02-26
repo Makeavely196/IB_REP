@@ -1,12 +1,20 @@
+import os
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QStackedWidget, QDialog, QDialogButtonBox, QInputDialog, QCheckBox, QMainWindow, QAction, QMenu
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QStackedWidget, QDialog, QDialogButtonBox, QInputDialog, QCheckBox
+from PyQt5.QtWidgets import QMainWindow, QAction, QMenu
+from PyQt5.QtWidgets import QComboBox, QPushButton
+from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import Qt
+import random
+import string
 
 class User:
-    def __init__(self, username, password, is_admin=False, is_blocked=False):
+    def __init__(self, username, password, is_admin=False, is_blocked=False, password_constraints_enabled=False):
         self.username = username
         self.password = password
         self.is_admin = is_admin
         self.is_blocked = is_blocked
+        self.password_constraints_enabled = password_constraints_enabled
 
     def __str__(self):
         return f"Username: {self.username}, Admin: {self.is_admin}, Blocked: {self.is_blocked}"
@@ -16,8 +24,8 @@ def load_users_from_file(filename):
     try:
         with open(filename, 'r') as file:
             for line in file:
-                username, password, is_admin, is_blocked = line.strip().split(',')
-                users.append(User(username, password, is_admin.lower() == 'true', is_blocked.lower() == 'true'))
+                username, password, is_admin, is_blocked, constraints_enabled = line.strip().split(',')
+                users.append(User(username, password, is_admin.lower() == 'true', is_blocked.lower() == 'true', constraints_enabled.lower() == 'true'))
     except FileNotFoundError:
         pass
     return users
@@ -25,61 +33,316 @@ def load_users_from_file(filename):
 def save_users_to_file(filename, users):
     with open(filename, 'w') as file:
         for user in users:
-            file.write(f"{user.username},{user.password},{str(user.is_admin).lower()},{str(user.is_blocked).lower()}\n")
+            file.write(f"{user.username},{user.password},{str(user.is_admin).lower()},{str(user.is_blocked).lower()},{str(user.password_constraints_enabled).lower()}\n")
 
 def authenticate(username, password, users):
     for user in users:
-        if user.username == username and user.password == password and not user.is_blocked:
+        if user.username == username and user.password == password:
             return user
     return None
 
-class ChangePasswordDialog(QDialog):
-    def __init__(self, current_user, users, password_constraints_enabled, parent=None):
+class CreateUserForm(QDialog):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Смена пароля')
-        self.current_user = current_user
-        self.users = users
-        self.password_constraints_enabled = password_constraints_enabled
+        self.setWindowTitle('Создать пользователя')
+
+        self.username_label = QLabel('Логин:')
+        self.username_input = QLineEdit()
+
+        self.admin_checkbox = QCheckBox('Администратор')
+        self.blocked_checkbox = QCheckBox('Заблокирован')
+        self.constraints_checkbox = QCheckBox('Включить ограничения на пароль')
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.create_user)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.admin_checkbox)
+        layout.addWidget(self.blocked_checkbox)
+        layout.addWidget(self.constraints_checkbox)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def create_user(self):
+        username = self.username_input.text()
+        is_admin = self.admin_checkbox.isChecked()
+        is_blocked = self.blocked_checkbox.isChecked()
+        constraints_enabled = self.constraints_checkbox.isChecked()
+
+        new_user = User(username, '', is_admin, is_blocked, constraints_enabled)
+        main_window.users.append(new_user)
+        save_users_to_file("users.txt", main_window.users)
+        self.accept()
+
+class ChangePasswordDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Сменить пароль')
 
         self.old_password_label = QLabel('Старый пароль:')
         self.old_password_input = QLineEdit()
+
         self.new_password_label = QLabel('Новый пароль:')
         self.new_password_input = QLineEdit()
-        self.new_password_input.setEchoMode(QLineEdit.Password)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        self.repeat_password_label = QLabel('Повторите пароль:')
+        self.repeat_password_input = QLineEdit()
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.change_password)
+        self.buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout()
         layout.addWidget(self.old_password_label)
         layout.addWidget(self.old_password_input)
         layout.addWidget(self.new_password_label)
         layout.addWidget(self.new_password_input)
-        layout.addWidget(buttons)
+        layout.addWidget(self.repeat_password_label)
+        layout.addWidget(self.repeat_password_input)
+        layout.addWidget(self.buttons)
 
         self.setLayout(layout)
 
-    def accept(self):
+    def change_password(self):
         old_password = self.old_password_input.text()
         new_password = self.new_password_input.text()
+        repeat_password = self.repeat_password_input.text()
 
-        if self.password_constraints_enabled:
-            if not any(char.isdigit() for char in new_password):
-                QMessageBox.warning(self, 'Ошибка', 'Пароль должен содержать хотя бы одну цифру.')
-                return
-
-            if not any(char in '!@#$%^&*()-_=+[]{}|;:\'",.<>/?`~' for char in new_password):
-                QMessageBox.warning(self, 'Ошибка', 'Пароль должен содержать хотя бы один знак препинания или арифметический оператор.')
-                return
-
-        if old_password == self.current_user.password:
-            self.current_user.password = new_password
-            save_users_to_file("users.txt", self.users)
-            QMessageBox.information(self, 'Успех', 'Пароль успешно изменен.')
-            super().accept()
+        if main_window.current_user.password == old_password:
+            if new_password == repeat_password:
+                main_window.current_user.password = new_password
+                save_users_to_file("users.txt", main_window.users)
+                self.accept()
+            else:
+                QMessageBox.warning(self, 'Ошибка', 'Новые пароли не совпадают.')
         else:
-            QMessageBox.warning(self, 'Ошибка', 'Неверный старый пароль.')
+            QMessageBox.warning(self, 'Ошибка', 'Старый пароль неверен.')
+
+class ViewUsersDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Список пользователей')
+
+        self.layout = QVBoxLayout(self)
+
+        self.users = main_window.users
+        self.create_user_blocks()
+
+    def create_user_blocks(self):
+        for user in self.users:
+            user_block = QWidget(self)
+            user_layout = QVBoxLayout(user_block)
+
+            login_label = QLabel(f'Логин: {user.username}', user_block)
+            password_label = QLabel(f'Пароль: {user.password}', user_block)
+            admin_checkbox = QCheckBox('Администратор', user_block)
+            admin_checkbox.setChecked(user.is_admin)
+            admin_checkbox.setEnabled(True)
+            admin_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, is_admin=state == Qt.Checked))
+            blocked_checkbox = QCheckBox('Заблокирован', user_block)
+            blocked_checkbox.setChecked(user.is_blocked)
+            blocked_checkbox.setEnabled(True)
+            blocked_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, is_blocked=state == Qt.Checked))
+            constraints_checkbox = QCheckBox('Ограничения пароля', user_block)
+            constraints_checkbox.setChecked(user.password_constraints_enabled)
+            constraints_checkbox.setEnabled(True)
+            constraints_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, constraints_enabled=state == Qt.Checked))
+
+            user_layout.addWidget(login_label)
+            user_layout.addWidget(password_label)
+            user_layout.addWidget(admin_checkbox)
+            user_layout.addWidget(blocked_checkbox)
+            user_layout.addWidget(constraints_checkbox)
+
+            self.layout.addWidget(user_block)
+
+        self.setLayout(self.layout)
+
+    def update_user(self, user, is_admin=None, is_blocked=None, constraints_enabled=None):
+        # Обновление данных пользователя и сохранение в файл
+        if is_admin is not None:
+            user.is_admin = is_admin
+        if is_blocked is not None:
+            user.is_blocked = is_blocked
+        if constraints_enabled is not None:
+            user.password_constraints_enabled = constraints_enabled
+
+        save_users_to_file("users.txt", main_window.users)
+
+    def update_users_label(self):
+        users_text = "\n".join([str(user) for user in main_window.users])
+        self.users_label.setText(users_text)
+
+class BlockUserDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Блокировать пользователя')
+
+        self.username_label = QLabel('Логин:')
+        self.username_input = QLineEdit()
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.block_user)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def block_user(self):
+        username = self.username_input.text()
+        user_to_block = next((user for user in main_window.users if user.username == username), None)
+
+        if user_to_block:
+            user_to_block.is_blocked = True
+            save_users_to_file("users.txt", main_window.users)
+            self.accept()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Пользователь не найден.')
+
+class UnblockUserDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Разблокировать пользователя')
+
+        self.username_label = QLabel('Логин:')
+        self.username_input = QLineEdit()
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.unblock_user)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def unblock_user(self):
+        username = self.username_input.text()
+        user_to_unblock = next((user for user in main_window.users if user.username == username), None)
+
+        if user_to_unblock:
+            user_to_unblock.is_blocked = False
+            save_users_to_file("users.txt", main_window.users)
+            self.accept()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Пользователь не найден.')
+
+class ToggleConstraintsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Включить/Отключить ограничения на пароль')
+
+        self.enable_constraints_checkbox = QCheckBox('Включить ограничения')
+        self.enable_constraints_checkbox.setChecked(main_window.password_constraints_enabled)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.toggle_constraints)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.enable_constraints_checkbox)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def toggle_constraints(self):
+        main_window.password_constraints_enabled = self.enable_constraints_checkbox.isChecked()
+        save_users_to_file("users.txt", main_window.users)
+        self.accept()
+
+class CreateFirstUserForm(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Создать первого пользователя')
+
+        self.username_label = QLabel('Логин:')
+        self.username_input = QLineEdit()
+
+        self.password_label = QLabel('Пароль:')
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.Password)
+
+        self.repeat_password_label = QLabel('Повторите пароль:')
+        self.repeat_password_input = QLineEdit()
+        self.repeat_password_input.setEchoMode(QLineEdit.Password)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.create_first_user)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.password_label)
+        layout.addWidget(self.password_input)
+        layout.addWidget(self.repeat_password_label)
+        layout.addWidget(self.repeat_password_input)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def create_first_user(self):
+        username = self.username_input.text()
+        password = self.password_input.text()
+        repeat_password = self.repeat_password_input.text()
+
+        if password == repeat_password:
+            main_window.users.append(User(username, password, is_admin=True))
+            save_users_to_file("users.txt", main_window.users)
+            self.accept()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Пароли не совпадают.')
+
+class CreateUserByAdminForm(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Создать пользователя администратором')
+
+        self.username_label = QLabel('Логин:')
+        self.username_input = QLineEdit()
+
+        self.blocked_checkbox = QCheckBox('Заблокировать пользователя')
+        self.constraints_checkbox = QCheckBox('Включить ограничения на пароль')
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.create_user)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.username_label)
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.blocked_checkbox)
+        layout.addWidget(self.constraints_checkbox)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+    def create_user(self):
+        username = self.username_input.text()
+        is_blocked = self.blocked_checkbox.isChecked()
+        constraints_enabled = self.constraints_checkbox.isChecked()
+
+        new_user = User(username, '', is_admin=False, is_blocked=is_blocked, password_constraints_enabled=constraints_enabled)
+        main_window.users.append(new_user)
+        self.generate_and_display_password(new_user)
+        save_users_to_file("users.txt", main_window.users)
+        self.accept()
+
+    def generate_and_display_password(self, user):
+        password_length = 20  # You can adjust the length as needed
+        characters = string.ascii_letters + string.digits + string.punctuation
+        new_password = ''.join(random.choice(characters) for i in range(password_length))
+        QMessageBox.information(self, 'Сгенерированный пароль', f'Сгенерированный пароль для пользователя {user.username}:\n\n{new_password}')
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -88,180 +351,184 @@ class MainWindow(QMainWindow):
         self.users = load_users_from_file("users.txt")
         self.current_user = None
         self.password_constraints_enabled = False
-        self.failed_attempts = 0  # Счетчик неудачных попыток
-        self.max_failed_attempts = 3  # Предельное значение неудачных попыток
+        self.login_attempts = 0
+        self.max_login_attempts = 3
 
-        self.stacked_widget = QStackedWidget(self)
+        self.init_ui()
 
-        self.init_login_form()
-        self.init_user_panel()
+    def init_ui(self):
+        auth_widget = QWidget(self)
 
-        self.setCentralWidget(self.stacked_widget)
+        auth_layout = QVBoxLayout(auth_widget)
 
-        # Добавляем меню
-        menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu('Файл')
+        auth_label = QLabel('Авторизация', auth_widget)
+        auth_layout.addWidget(auth_label)
 
-        # Подменю "Справка" с командой "О программе"
-        help_menu = menu_bar.addMenu('Справка')
-        about_action = QAction('О программе', self)
-        about_action.triggered.connect(self.show_about_dialog)
-        help_menu.addAction(about_action)
+        auth_username_label = QLabel('Логин:', auth_widget)
+        self.auth_username_input = QLineEdit(auth_widget)
+        auth_layout.addWidget(auth_username_label)
+        auth_layout.addWidget(self.auth_username_input)
 
-    def show_about_dialog(self):
-        QMessageBox.about(self, 'О программе', 'Савельев Антон, ИДБ-20-07, 18 вариант')
+        auth_password_label = QLabel('Пароль:', auth_widget)
+        self.auth_password_input = QLineEdit(auth_widget)
+        self.auth_password_input.setEchoMode(QLineEdit.Password)
+        auth_layout.addWidget(auth_password_label)
+        auth_layout.addWidget(self.auth_password_input)
 
-    def init_login_form(self):
-        login_widget = QWidget(self)
+        auth_button = QPushButton('Войти', auth_widget)
+        auth_button.clicked.connect(self.authenticate_user)
+        auth_layout.addWidget(auth_button)
 
-        username_label = QLabel('Логин:')
-        username_input = QLineEdit()
+        self.stacked_widget = QStackedWidget()
 
-        password_label = QLabel('Пароль:')
-        password_input = QLineEdit()
-        password_input.setEchoMode(QLineEdit.Password)
-
-        login_button = QPushButton('Войти')
-        login_button.clicked.connect(lambda: self.on_login(username_input.text(), password_input.text()))
-
-        layout = QVBoxLayout(login_widget)
-        layout.addWidget(username_label)
-        layout.addWidget(username_input)
-        layout.addWidget(password_label)
-        layout.addWidget(password_input)
-        layout.addWidget(login_button)
-
-        self.stacked_widget.addWidget(login_widget)
-
-    def init_user_panel(self):
         user_panel_widget = QWidget(self)
 
         self.login_label = QLabel(self)
-        change_password_button = QPushButton('Сменить пароль', self)
+        change_password_button = QPushButton('Сменить пароль', user_panel_widget)
         change_password_button.clicked.connect(self.show_change_password)
-        
-        # Добавлена кнопка для администратора и кнопка выхода
-        self.view_users_button = QPushButton('Просмотр пользователей', self)
+
+        self.view_users_button = QPushButton('Просмотр пользователей', user_panel_widget)
         self.view_users_button.clicked.connect(self.view_users)
         self.view_users_button.setEnabled(False)
-        
-        # Добавлена кнопка для администратора и кнопка выхода
-        self.block_user_button = QPushButton('Блокировать пользователя', self)
+
+        self.block_user_button = QPushButton('Блокировать пользователя', user_panel_widget)
         self.block_user_button.clicked.connect(self.block_user)
         self.block_user_button.setEnabled(False)
-        
-        # Добавлена кнопка для администратора и кнопка выхода
-        self.unblock_user_button = QPushButton('Разблокировать пользователя', self)
+
+        self.unblock_user_button = QPushButton('Разблокировать пользователя', user_panel_widget)
         self.unblock_user_button.clicked.connect(self.unblock_user)
         self.unblock_user_button.setEnabled(False)
 
-        # Добавлена кнопка для администратора и кнопка выхода
-        self.toggle_constraints_button = QPushButton('Включить/Отключить ограничения', self)
+        self.toggle_constraints_button = QPushButton('Включить/Отключить ограничения', user_panel_widget)
         self.toggle_constraints_button.clicked.connect(self.toggle_constraints)
         self.toggle_constraints_button.setEnabled(False)
-        
-        logout_button = QPushButton('Выйти', self)
-        logout_button.clicked.connect(self.logout)
 
-        layout = QVBoxLayout(user_panel_widget)
-        layout.addWidget(self.login_label)
-        layout.addWidget(change_password_button)
-        
-        # Добавлена кнопка для администратора и кнопка выхода
-        layout.addWidget(self.view_users_button)
-        layout.addWidget(self.block_user_button)
-        layout.addWidget(self.unblock_user_button)
-        layout.addWidget(self.toggle_constraints_button)
-        layout.addWidget(logout_button)
+        self.logout_button = QPushButton('Выйти', user_panel_widget)
+        self.logout_button.clicked.connect(self.logout)
 
+        self.create_user_button = QPushButton('Создать пользователя', user_panel_widget)
+        self.create_user_button.clicked.connect(self.show_create_user_form)
+        self.create_user_button.setEnabled(False)
+
+        user_layout = QVBoxLayout(user_panel_widget)
+        user_layout.addWidget(self.login_label)
+        user_layout.addWidget(change_password_button)
+        user_layout.addWidget(self.view_users_button)
+        user_layout.addWidget(self.block_user_button)
+        user_layout.addWidget(self.unblock_user_button)
+        user_layout.addWidget(self.toggle_constraints_button)
+        user_layout.addWidget(self.create_user_button)
+        user_layout.addWidget(self.logout_button)
+
+        auth_widget.setStyleSheet("background-color: lightblue;")
+        user_panel_widget.setStyleSheet("background-color: lightgreen;")
+
+        self.stacked_widget.addWidget(auth_widget)
         self.stacked_widget.addWidget(user_panel_widget)
 
-    def on_login(self, input_username, input_password):
-        authenticated_user = authenticate(input_username, input_password, self.users)
+        self.setCentralWidget(self.stacked_widget)
 
-        if authenticated_user:
-            if authenticated_user.is_blocked:
-                QMessageBox.warning(self, 'Ошибка входа', 'Ваша учетная запись заблокирована.')
-            else:
-                self.current_user = authenticated_user
-                self.failed_attempts = 0  # Сбрасываем счетчик при успешном входе
-                self.stacked_widget.setCurrentIndex(1)
-                self.update_user_panel()
+        self.setGeometry(300, 300, 400, 300)
+        self.setWindowTitle('Система управления пользователями')
+
+    def init_user_panel(self):
+        self.auth_username_input.clear()
+        self.auth_password_input.clear()
+        self.login_attempts = 0
+
+        if self.current_user and self.current_user.is_blocked:
+            QMessageBox.warning(self, 'Блокировка', 'Ваша учетная запись заблокирована. Обратитесь к администратору.')
+            self.current_user = None
+            self.stacked_widget.setCurrentIndex(0)  # Переключение на форму авторизации
         else:
-            self.failed_attempts += 1  # Увеличиваем счетчик неудачных попыток
-            self.show_message(f"Ошибка аутентификации. Попытка {self.failed_attempts} из {self.max_failed_attempts}."
-                              " Пользователь не найден или неверный пароль.")
+            self.update_user_panel()
+            self.stacked_widget.setCurrentIndex(1)  # Переключение на форму пользователя или администратора
 
-            if self.failed_attempts >= self.max_failed_attempts:
-                self.close()  # Закрываем программу при достижении предельного значения неудачных попыток
+    def authenticate_user(self):
+        username = self.auth_username_input.text()
+        password = self.auth_password_input.text()
 
-    def show_change_password(self):
-        dialog = ChangePasswordDialog(self.current_user, self.users, self.password_constraints_enabled, self)
-        dialog.exec_()
+        self.current_user = authenticate(username, password, self.users)
 
-    def view_users(self):
-        user_list = '\n'.join(str(user) for user in self.users)
-        QMessageBox.information(self, 'Список пользователей', user_list)
-
-    def block_user(self):
-        users_to_select = [user.username for user in self.users if not user.is_admin and not user.is_blocked]
-        selected_user, ok = QInputDialog.getItem(self, 'Выбор пользователя', 'Выберите пользователя:', users_to_select, editable=False)
-
-        if ok and selected_user:
-            user_to_block = next(user for user in self.users if user.username == selected_user)
-            
-            if user_to_block.is_blocked:
-                QMessageBox.information(self, 'Блокировка пользователя', f'Пользователь {selected_user} уже заблокирован.')
+        if self.current_user:
+            self.init_user_panel()
+        else:
+            self.login_attempts += 1
+            if self.login_attempts >= self.max_login_attempts:
+                QMessageBox.critical(self, 'Ошибка', 'Превышено количество попыток входа. Программа будет закрыта.')
+                self.close()
             else:
-                user_to_block.is_blocked = True
-                save_users_to_file("users.txt", self.users)
-                
-                if self.current_user and self.current_user.username == selected_user:
-                    QMessageBox.warning(self, 'Блокировка учетной записи', 'Ваша учетная запись была заблокирована. Выход из системы.')
-                    self.logout()
-                else:
-                    QMessageBox.information(self, 'Блокировка пользователя', f'Пользователь {selected_user} заблокирован.')
-
-    def unblock_user(self):
-        users_to_select = [user.username for user in self.users if not user.is_admin and user.is_blocked]
-        selected_user, ok = QInputDialog.getItem(self, 'Выбор пользователя', 'Выберите пользователя:', users_to_select, editable=False)
-
-        if ok and selected_user:
-            user_to_unblock = next(user for user in self.users if user.username == selected_user)
+                QMessageBox.warning(self, 'Ошибка', 'Неверные логин или пароль.')
             
-            if not user_to_unblock.is_blocked:
-                QMessageBox.information(self, 'Разблокировка пользователя', f'Пользователь {selected_user} уже разблокирован.')
-            else:
-                user_to_unblock.is_blocked = False
-                save_users_to_file("users.txt", self.users)
-                QMessageBox.information(self, 'Разблокировка пользователя', f'Пользователь {selected_user} разблокирован.')
-
-    def toggle_constraints(self):
-        self.password_constraints_enabled = not self.password_constraints_enabled
-        QMessageBox.information(self, 'Ограничения пароля', f"Ограничения пароля {'включены' if self.password_constraints_enabled else 'отключены'}.")
-
-    def logout(self):
-        self.stacked_widget.setCurrentIndex(0)
+            self.logout()
 
     def update_user_panel(self):
-        self.login_label.setText(f'Вы вошли как: {self.current_user.username}')
-        
-        # Активируем кнопку "Просмотр пользователей" только для администратора
-        if self.current_user.is_admin:
-            self.view_users_button.setEnabled(True)
-            self.block_user_button.setEnabled(True)  # Активируем кнопку блокировки для администратора
-            self.unblock_user_button.setEnabled(True)  # Активируем кнопку разблокировки для администратора
-            self.toggle_constraints_button.setEnabled(True)  # Активируем кнопку включения/отключения ограничений
-        else:
+        if self.current_user and not self.current_user.is_blocked:
+            self.login_label.setText(f"Вы вошли как {'администратор' if self.current_user.is_admin else 'пользователь'}: {self.current_user.username}")
+            self.view_users_button.setEnabled(True) if self.current_user.is_admin else self.view_users_button.hide()
+            self.block_user_button.setEnabled(True) if self.current_user.is_admin else self.block_user_button.hide()
+            self.unblock_user_button.setEnabled(True) if self.current_user.is_admin else self.unblock_user_button.hide()
+            self.toggle_constraints_button.setEnabled(True) if self.current_user.is_admin else self.toggle_constraints_button.hide()
+            self.create_user_button.setEnabled(True) if self.current_user.is_admin else self.create_user_button.hide()
+        elif self.current_user and self.current_user.is_blocked:
+            self.login_label.setText(f"Пользователь {self.current_user.username} заблокирован.")
             self.view_users_button.setEnabled(False)
-            self.block_user_button.setEnabled(False)  # Деактивируем кнопку блокировки для обычного пользователя
-            self.unblock_user_button.setEnabled(False)  # Деактивируем кнопку разблокировки для обычного пользователя
-            self.toggle_constraints_button.setEnabled(False)  # Деактивируем кнопку включения/отключения ограничений
+            self.block_user_button.setEnabled(False)
+            self.unblock_user_button.setEnabled(False)
+            self.toggle_constraints_button.setEnabled(False)
+            self.create_user_button.setEnabled(False)
+        else:
+            self.login_label.clear()
 
-    def show_message(self, message):
-        msg_box = QMessageBox()
-        msg_box.setText(message)
-        msg_box.exec_()
+    def show_change_password(self):
+        if self.current_user:
+            change_password_dialog = ChangePasswordDialog(self)
+            change_password_dialog.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Пользователь не авторизован.')
+
+    def view_users(self):
+        if self.current_user and self.current_user.is_admin:
+            view_users_dialog = ViewUsersDialog(self)
+            view_users_dialog.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Доступно только для администратора.')
+
+    def block_user(self):
+        if self.current_user and self.current_user.is_admin:
+            block_user_dialog = BlockUserDialog(self)
+            block_user_dialog.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Доступно только для администратора.')
+
+    def unblock_user(self):
+        if self.current_user and self.current_user.is_admin:
+            unblock_user_dialog = UnblockUserDialog(self)
+            unblock_user_dialog.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Доступно только для администратора.')
+
+    def toggle_constraints(self):
+        if self.current_user and self.current_user.is_admin:
+            toggle_constraints_dialog = ToggleConstraintsDialog(self)
+            toggle_constraints_dialog.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Доступно только для администратора.')
+
+    def show_create_user_form(self):
+        if self.current_user and self.current_user.is_admin:
+            create_user_form = CreateUserByAdminForm(self)
+            create_user_form.exec_()
+        else:
+            QMessageBox.warning(self, 'Ошибка', 'Доступно только для администратора.')
+
+    def logout(self):
+        self.current_user = None
+        self.stacked_widget.setCurrentIndex(0)  # Переключение на форму авторизации
+        self.auth_username_input.clear()
+        self.auth_password_input.clear()
+        self.login_label.clear()
+        self.update_user_panel()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
