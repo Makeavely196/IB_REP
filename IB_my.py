@@ -123,12 +123,15 @@ class ChangePasswordDialog(QDialog):
         repeat_password = self.repeat_password_input.text()
 
         if main_window.current_user.password == old_password:
-            if new_password == repeat_password:
-                main_window.current_user.password = new_password
-                save_users_to_file("users.txt", main_window.users)
-                self.accept()
+            if old_password == new_password:
+                if new_password == repeat_password:
+                    main_window.current_user.password = new_password
+                    save_users_to_file("users.txt", main_window.users)
+                    self.accept()
+                else:
+                    QMessageBox.warning(self, 'Ошибка', 'Новые пароли не совпадают.')
             else:
-                QMessageBox.warning(self, 'Ошибка', 'Новые пароли не совпадают.')
+                QMessageBox.warning(self, 'Ошибка', 'Новый пароль совпадает со старым')
         else:
             QMessageBox.warning(self, 'Ошибка', 'Старый пароль неверен.')
 
@@ -172,33 +175,25 @@ class NewPasswordDialog(QDialog):
 class ViewUsersDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('Просмотр пользователей')
+        self.setWindowTitle('Список пользователей')
 
         self.layout = QVBoxLayout(self)
 
         self.users = main_window.users
 
-        # Создаем QComboBox для выбора пользователя
+        # Создаем QComboBox
         self.user_combobox = QComboBox(self)
         self.user_combobox.addItems([user.username for user in self.users])
         self.user_combobox.currentIndexChanged.connect(self.update_selected_user)
 
         self.layout.addWidget(self.user_combobox)
 
-        # Создаем чекбоксы для отображения и изменения параметров пользователя
-        self.admin_checkbox = QCheckBox('Администратор', self)
-        self.admin_checkbox.stateChanged.connect(self.update_user)
-        self.layout.addWidget(self.admin_checkbox)
+        # Создаем блок для отображения информации о пользователе
+        self.user_info_block = QWidget(self)
+        self.user_info_layout = QVBoxLayout(self.user_info_block)
+        self.layout.addWidget(self.user_info_block)
 
-        self.blocked_checkbox = QCheckBox('Заблокирован', self)
-        self.blocked_checkbox.stateChanged.connect(self.update_user)
-        self.layout.addWidget(self.blocked_checkbox)
-
-        self.constraints_checkbox = QCheckBox('Ограничения пароля', self)
-        self.constraints_checkbox.stateChanged.connect(self.update_user)
-        self.layout.addWidget(self.constraints_checkbox)
-
-        self.setLayout(self.layout)
+        self.create_user_blocks()
 
     def create_user_blocks(self):
         # Создаем блоки для каждого пользователя
@@ -221,6 +216,11 @@ class ViewUsersDialog(QDialog):
             constraints_checkbox.setChecked(user.password_constraints_enabled)
             constraints_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, constraints_enabled=state == Qt.Checked))
 
+            login_label.hide()
+            admin_checkbox.hide()
+            blocked_checkbox.hide()
+            constraints_checkbox.hide()
+
             user_layout.addWidget(login_label)
             user_layout.addWidget(admin_checkbox)
             user_layout.addWidget(blocked_checkbox)
@@ -232,23 +232,44 @@ class ViewUsersDialog(QDialog):
 
     def update_selected_user(self, index):
         selected_user = self.users[index]
-        # Обновление состояния чекбоксов в соответствии с выбранным пользователем
-        self.admin_checkbox.setChecked(selected_user.is_admin)
-        self.blocked_checkbox.setChecked(selected_user.is_blocked)
-        self.constraints_checkbox.setChecked(selected_user.password_constraints_enabled)
+        # Очистка содержимого виджета
+        for i in reversed(range(self.user_info_layout.count())):
+            widget = self.user_info_layout.itemAt(i).widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # Создание и добавление новых элементов в макет для отображения информации о пользователе
+        login_label = QLabel(f'Логин: {selected_user.username}', self.user_info_block)
+
+        admin_checkbox = QCheckBox('Администратор', self.user_info_block)
+        admin_checkbox.setChecked(selected_user.is_admin)
+        admin_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_admin=state == Qt.Checked))
+
+        blocked_checkbox = QCheckBox('Заблокирован', self.user_info_block)
+        blocked_checkbox.setChecked(selected_user.is_blocked)
+        blocked_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_blocked=state == Qt.Checked))
+
+        constraints_checkbox = QCheckBox('Ограничения пароля', self.user_info_block)
+        constraints_checkbox.setChecked(selected_user.password_constraints_enabled)
+        constraints_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, constraints_enabled=state == Qt.Checked))
+
+        self.user_info_layout.addWidget(login_label)
+        self.user_info_layout.addWidget(admin_checkbox)
+        self.user_info_layout.addWidget(blocked_checkbox)
+        self.user_info_layout.addWidget(constraints_checkbox)
+
+        self.user_info_block.setLayout(self.user_info_layout)
 
 
     def update_user(self, user, is_admin=None, is_blocked=None, constraints_enabled=None):
-        # Получение выбранного пользователя
-        index = self.user_combobox.currentIndex()
-        selected_user = self.users[index]
+        # Обновление данных пользователя и сохранение в файл
+        if is_admin is not None:
+            user.is_admin = is_admin
+        if is_blocked is not None:
+            user.is_blocked = is_blocked
+        if constraints_enabled is not None:
+            user.password_constraints_enabled = constraints_enabled
 
-        # Обновление параметров выбранного пользователя
-        selected_user.is_admin = self.admin_checkbox.isChecked()
-        selected_user.is_blocked = self.blocked_checkbox.isChecked()
-        selected_user.password_constraints_enabled = self.constraints_checkbox.isChecked()
-
-        # Сохранение изменений в файл
         save_users_to_file("users.txt", main_window.users)
 
     def update_users_label(self):
