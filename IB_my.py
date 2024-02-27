@@ -246,6 +246,7 @@ class ViewUsersDialog(QDialog):
         admin_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_admin=state == Qt.Checked))
 
         blocked_checkbox = QCheckBox('Заблокирован', self.user_info_block)
+        blocked_checkbox.setEnabled(False) if selected_user.is_admin else blocked_checkbox.setEnabled(True)
         blocked_checkbox.setChecked(selected_user.is_blocked)
         blocked_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_blocked=state == Qt.Checked))
 
