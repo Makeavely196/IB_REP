@@ -1,12 +1,60 @@
 import os
 import sys
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.fernet import Fernet
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QStackedWidget, QDialog, QDialogButtonBox, QInputDialog, QCheckBox
 from PyQt5.QtWidgets import QMainWindow, QAction, QMenu
 from PyQt5.QtWidgets import QComboBox, QPushButton
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
+import base64
 import random
 import string
+
+def generate_key(self):
+    
+    password = self.password.encode()
+    salt = os.urandom(16)  # Генерация случайной соли
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+        )
+
+    key = kdf.derive(password)
+    
+    
+    with open("secret.key", "wb") as key_file:
+        key_file.write(key)
+
+def load_key():
+    return open("secret.key", "rb").read()
+ 
+def encrypt_file(file, key):
+    fernet = Fernet(key)
+    with open(file, "rb") as myfile:
+        file_data = myfile.read()
+    data = fernet.encrypt(file_data)
+    print("Data encrypted:", data.decode())
+    with open("file_encrypted.txt", "wb") as file:
+        file.write(data)
+        os.remove('users.txt')
+ 
+def decrypt_file(file_encrypted, key):
+    fernet = Fernet(key)
+    with open(file_encrypted, "rb") as myfile:
+        file_data = myfile.read()
+    data = fernet.decrypt(file_data)
+    print("Data decrypted:", data.decode())
+    decrypted_file = 'users.txt'  # Use a different filename for decrypted file
+    with open(decrypted_file, 'wb') as file:
+        file.write(data)
+    return decrypted_file  # Return the name of the decrypted file
 
 class User:
     def __init__(self, username, password, is_admin=False, is_blocked=False, password_constraints_enabled=False):
@@ -49,9 +97,20 @@ def authenticate(username, password, users):
     return None
 
 class CreateUserForm(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Создать пользователя')
+
+        self.myclose = True
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -86,9 +145,20 @@ class CreateUserForm(QDialog):
         self.accept()
 
 class ChangePasswordDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Сменить пароль')
+
+        self.myclose = True
 
         self.old_password_label = QLabel('Старый пароль:')
         self.old_password_input = QLineEdit()
@@ -136,9 +206,20 @@ class ChangePasswordDialog(QDialog):
             QMessageBox.warning(self, 'Ошибка', 'Старый пароль неверен.')
 
 class NewPasswordDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Сменить пароль')
+
+        self.myclose = True
 
         self.new_password_label = QLabel('Новый пароль:')
         self.new_password_input = QLineEdit()
@@ -173,9 +254,20 @@ class NewPasswordDialog(QDialog):
             QMessageBox.warning(self, 'Ошибка', 'Новые пароли не совпадают.')
 
 class ViewUsersDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Список пользователей')
+
+        self.myclose = True
 
         self.layout = QVBoxLayout(self)
 
@@ -278,9 +370,20 @@ class ViewUsersDialog(QDialog):
         self.users_label.setText(users_text)
 
 class BlockUserDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Блокировать пользователя')
+
+        self.myclose = True
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -308,9 +411,20 @@ class BlockUserDialog(QDialog):
             QMessageBox.warning(self, 'Ошибка', 'Пользователь не найден.')
 
 class UnblockUserDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Разблокировать пользователя')
+
+        self.myclose = True
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -338,9 +452,20 @@ class UnblockUserDialog(QDialog):
             QMessageBox.warning(self, 'Ошибка', 'Пользователь не найден.')
 
 class ToggleConstraintsDialog(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Включить/Отключить ограничения на пароль')
+
+        self.myclose = True
 
         self.enable_constraints_checkbox = QCheckBox('Включить ограничения')
         self.enable_constraints_checkbox.setChecked(main_window.password_constraints_enabled)
@@ -361,9 +486,20 @@ class ToggleConstraintsDialog(QDialog):
         self.accept()
 
 class CreateFirstUserForm(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Создать первого пользователя')
+
+        self.myclose = True
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -404,9 +540,20 @@ class CreateFirstUserForm(QDialog):
             QMessageBox.warning(self, 'Ошибка', 'Пароли не совпадают.')
 
 class CreateUserByAdminForm(QDialog):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Создать пользователя администратором')
+
+        self.myclose = True
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -444,8 +591,19 @@ class CreateUserByAdminForm(QDialog):
         QMessageBox.information(self, 'Сгенерированный пароль', f'Сгенерированный пароль для пользователя {user.username}:\n\n{new_password}')
 
 class MainWindow(QMainWindow):
+
+    def closeEvent(self, event):
+        if self.myclose:
+            encrypt_file(file, key)	
+            print('exit')	
+        else:
+            event.ignore()
+            print('exit')
+
     def __init__(self):
         super().__init__()
+
+        self.myclose = True
 
         self.users = load_users_from_file("users.txt")
         self.current_user = None
@@ -643,8 +801,56 @@ class MainWindow(QMainWindow):
         self.login_label.clear()
         self.update_user_panel()
 
+
+class AuthPass(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.init_ui()
+
+    def init_ui(self):
+        # Создаем виджеты
+        self.password_label = QLabel('Введите пароль:')
+        self.password_input = QLineEdit(self)
+        self.password_input.setEchoMode(QLineEdit.Password)  # Скрываем вводимые символы
+        self.submit_button = QPushButton('Войти', self)
+        self.submit_button.clicked.connect(self.check_password)
+
+        # Создаем макет и добавляем виджеты
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.password_label)
+        layout.addWidget(self.password_input)
+        layout.addWidget(self.submit_button)
+
+        self.setWindowTitle('Форма ввода пароля')
+        self.setGeometry(300, 300, 300, 150)
+
+    def check_password(self):
+        # Здесь вы можете добавить код для проверки пароля
+        # Например, сравнение введенного пароля с предопределенным значением
+        entered_password = self.password_input.text()
+        if entered_password == 'access':
+            password_form.hide()
+            QMessageBox.information(self, 'Разблокировка базы','Пароль верный. Разблокировка базы данных.')
+            decrypt_file(file_encrypted, key)
+            main_window.show()
+        else:
+            QMessageBox.warning(self, 'Ошибка','Неверный пароль. Попробуйте снова.')
+
+
 if __name__ == '__main__':
+    
+    file = 'users.txt'
+    file_encrypted = 'file_encrypted.txt'
+
+    if not os.path.exists('secret.key'):
+        generate_key()
+    key = load_key()
+
     app = QApplication(sys.argv)
     main_window = MainWindow()
-    main_window.show()
+    password_form = AuthPass()
+    password_form.show()
+
+    
     sys.exit(app.exec_())
