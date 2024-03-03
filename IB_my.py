@@ -13,9 +13,9 @@ import base64
 import random
 import string
 
-def generate_key(self):
+def generate_key(password):
     
-    password = self.password.encode()
+    password = password.encode()
     salt = os.urandom(16)  # Генерация случайной соли
 
     kdf = PBKDF2HMAC(
@@ -71,6 +71,37 @@ def load_users_from_file(filename):
     users = []
     if os.path.exists(filename):
         with open(filename, 'r') as file:
+                    for line in file:
+                        username, password, is_admin, is_blocked, constraints_enabled = line.strip().split(',')
+                        is_admin = is_admin.lower() == 'true'
+                        is_blocked = is_blocked.lower() == 'true'
+                        constraints_enabled = constraints_enabled.lower() == 'true'
+                        user = User(username, password, is_admin, is_blocked, constraints_enabled)
+                        users.append(user)
+    else:
+        if os.path.exists('file_encrypted.txt'):
+            decrypt_file(file_encrypted, key)
+            if os.path.exists(filename):
+                with open(filename, 'r') as file:
+                    for line in file:
+                        username, password, is_admin, is_blocked, constraints_enabled = line.strip().split(',')
+                        is_admin = is_admin.lower() == 'true'
+                        is_blocked = is_blocked.lower() == 'true'
+                        constraints_enabled = constraints_enabled.lower() == 'true'
+                        user = User(username, password, is_admin, is_blocked, constraints_enabled)
+                        users.append(user)
+            else:
+                # Если файла нет, создаем его
+                with open(filename, 'w') as file:
+                    file.write("admin,,true,false,false\n")
+                users = [User("admin", "", True, False, False)]
+
+            return users
+    
+def load_users_from_file_with_out_decrypt(filename):
+    users = []
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
             for line in file:
                 username, password, is_admin, is_blocked, constraints_enabled = line.strip().split(',')
                 is_admin = is_admin.lower() == 'true'
@@ -85,12 +116,16 @@ def load_users_from_file(filename):
         users = [User("admin", "", True, False, False)]
 
     return users
+
 def save_users_to_file(filename, users):
     with open(filename, 'w') as file:
         for user in users:
             file.write(f"{user.username},{user.password},{str(user.is_admin).lower()},{str(user.is_blocked).lower()},{str(user.password_constraints_enabled).lower()}\n")
 
 def authenticate(username, password, users):
+    
+    load_users_from_file('users.txt')
+    
     for user in users:
         if user.username == username and user.password == password:
             return user
@@ -98,13 +133,7 @@ def authenticate(username, password, users):
 
 class CreateUserForm(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -146,19 +175,13 @@ class CreateUserForm(QDialog):
 
 class ChangePasswordDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Сменить пароль')
 
-        self.myclose = True
+        
 
         self.old_password_label = QLabel('Старый пароль:')
         self.old_password_input = QLineEdit()
@@ -192,10 +215,22 @@ class ChangePasswordDialog(QDialog):
         new_password = self.new_password_input.text()
         repeat_password = self.repeat_password_input.text()
 
+        password_constraints_enabled = main_window.current_user.password_constraints_enabled
+
+        if password_constraints_enabled:
+            if not any(char.isdigit() for char in new_password):
+                QMessageBox.warning(self, 'Ошибка', 'Пароль должен содержать хотя бы одну цифру.')
+                return
+
+            if not any(char in '!@#$%^&*()-_=+[]{}|;:\'",.<>/?`~' for char in new_password):
+                QMessageBox.warning(self, 'Ошибка', 'Пароль должен содержать хотя бы один знак препинания или арифметический оператор.')
+                return
+
         if main_window.current_user.password == old_password:
-            if old_password == new_password:
+            if not old_password == new_password:
                 if new_password == repeat_password:
                     main_window.current_user.password = new_password
+                    main_window.current_user.password_constraints_enabled = False
                     save_users_to_file("users.txt", main_window.users)
                     self.accept()
                 else:
@@ -207,19 +242,13 @@ class ChangePasswordDialog(QDialog):
 
 class NewPasswordDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Сменить пароль')
 
-        self.myclose = True
+        
 
         self.new_password_label = QLabel('Новый пароль:')
         self.new_password_input = QLineEdit()
@@ -255,13 +284,7 @@ class NewPasswordDialog(QDialog):
 
 class ViewUsersDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -371,19 +394,13 @@ class ViewUsersDialog(QDialog):
 
 class BlockUserDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Блокировать пользователя')
 
-        self.myclose = True
+        
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -412,19 +429,13 @@ class BlockUserDialog(QDialog):
 
 class UnblockUserDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Разблокировать пользователя')
 
-        self.myclose = True
+       
 
         self.username_label = QLabel('Логин:')
         self.username_input = QLineEdit()
@@ -453,19 +464,13 @@ class UnblockUserDialog(QDialog):
 
 class ToggleConstraintsDialog(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+   
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Включить/Отключить ограничения на пароль')
 
-        self.myclose = True
+        
 
         self.enable_constraints_checkbox = QCheckBox('Включить ограничения')
         self.enable_constraints_checkbox.setChecked(main_window.password_constraints_enabled)
@@ -487,13 +492,7 @@ class ToggleConstraintsDialog(QDialog):
 
 class CreateFirstUserForm(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
+    
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -541,14 +540,7 @@ class CreateFirstUserForm(QDialog):
 
 class CreateUserByAdminForm(QDialog):
 
-    def closeEvent(self, event):
-        if self.myclose:
-            encrypt_file(file, key)	
-            print('exit')	
-        else:
-            event.ignore()
-            print('exit')
-
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Создать пользователя администратором')
@@ -699,6 +691,8 @@ class MainWindow(QMainWindow):
             self.stacked_widget.setCurrentIndex(0)  # Переключение на форму авторизации
         elif self.current_user and not self.current_user.password:
             self.show_change_new_password()
+        elif self.current_user.password_constraints_enabled:
+            self.show_change_password()
         else:
             self.update_user_panel()
             self.stacked_widget.setCurrentIndex(1)  # Переключение на форму пользователя или администратора
@@ -826,13 +820,12 @@ class AuthPass(QWidget):
         self.setGeometry(300, 300, 300, 150)
 
     def check_password(self):
-        # Здесь вы можете добавить код для проверки пароля
-        # Например, сравнение введенного пароля с предопределенным значением
         entered_password = self.password_input.text()
         if entered_password == 'access':
             password_form.hide()
             QMessageBox.information(self, 'Разблокировка базы','Пароль верный. Разблокировка базы данных.')
             decrypt_file(file_encrypted, key)
+            load_users_from_file('users.txt')
             main_window.show()
         else:
             QMessageBox.warning(self, 'Ошибка','Неверный пароль. Попробуйте снова.')
@@ -842,14 +835,26 @@ if __name__ == '__main__':
     
     file = 'users.txt'
     file_encrypted = 'file_encrypted.txt'
+    password = 'fffffrre'
+
+    
 
     if not os.path.exists('secret.key'):
         generate_key()
     key = load_key()
 
+    if os.path.getsize(file_encrypted) == 0:
+        try:
+            encrypt_file(file, key)
+        except:
+            sys.exit()
+
+
+
     app = QApplication(sys.argv)
-    main_window = MainWindow()
+    
     password_form = AuthPass()
+    main_window = MainWindow()
     password_form.show()
 
     
