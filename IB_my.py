@@ -33,7 +33,9 @@ def generate_key(password):
         key_file.write(key)
 
 def load_key():
-    return open("secret.key", "rb").read()
+    with open("secret.key", "rb") as key_file:
+        key = key_file.read()
+    return base64.urlsafe_b64encode(key)
  
 def encrypt_file(file, key):
     fernet = Fernet(key)
@@ -46,15 +48,18 @@ def encrypt_file(file, key):
         os.remove('users.txt')
  
 def decrypt_file(file_encrypted, key):
-    fernet = Fernet(key)
-    with open(file_encrypted, "rb") as myfile:
-        file_data = myfile.read()
-    data = fernet.decrypt(file_data)
-    print("Data decrypted:", data.decode())
-    decrypted_file = 'users.txt'  # Use a different filename for decrypted file
-    with open(decrypted_file, 'wb') as file:
-        file.write(data)
-    return decrypted_file  # Return the name of the decrypted file
+    try:
+        fernet = Fernet(key)
+        with open(file_encrypted, "rb") as myfile:
+            file_data = myfile.read()
+        data = fernet.decrypt(file_data)
+        print("Data decrypted:", data.decode())
+        decrypted_file = 'users.txt'  # Use a different filename for decrypted file
+        with open(decrypted_file, 'wb') as file:
+            file.write(data)
+        return decrypted_file  # Return the name of the decrypted file
+    except:
+        sys.exit()
 
 class User:
     def __init__(self, username, password, is_admin=False, is_blocked=False, password_constraints_enabled=False):
@@ -66,6 +71,13 @@ class User:
 
     def __str__(self):
         return f"Username: {self.username}, Admin: {self.is_admin}, Blocked: {self.is_blocked}"
+
+def show_warning_message(message):
+    msg = QMessageBox()
+    msg.setIcon(QMessageBox.Warning)
+    msg.setText(message)
+    msg.setWindowTitle("Предупреждение")
+    msg.exec_()
 
 def load_users_from_file(filename):
     users = []
@@ -80,7 +92,11 @@ def load_users_from_file(filename):
                         users.append(user)
     else:
         if os.path.exists('file_encrypted.txt'):
-            decrypt_file(file_encrypted, key)
+            try:
+                decrypt_file(file_encrypted, key)
+            except:
+                show_warning_message('Ошибка при дешифровке файла')
+                sys.exit()
             if os.path.exists(filename):
                 with open(filename, 'r') as file:
                     for line in file:
@@ -319,9 +335,9 @@ class ViewUsersDialog(QDialog):
             login_label = QLabel(f'Логин: {user.username}', user_block)
 
             # Создаем чекбоксы для каждого параметра пользователя
-            admin_checkbox = QCheckBox('Администратор', user_block)
-            admin_checkbox.setChecked(user.is_admin)
-            admin_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, is_admin=state == Qt.Checked))
+            # admin_checkbox = QCheckBox('Администратор', user_block)
+            # admin_checkbox.setChecked(user.is_admin)
+            # admin_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, is_admin=state == Qt.Checked))
 
             blocked_checkbox = QCheckBox('Заблокирован', user_block)
             blocked_checkbox.setChecked(user.is_blocked)
@@ -332,12 +348,12 @@ class ViewUsersDialog(QDialog):
             constraints_checkbox.stateChanged.connect(lambda state, u=user: self.update_user(u, constraints_enabled=state == Qt.Checked))
 
             login_label.hide()
-            admin_checkbox.hide()
+            # admin_checkbox.hide()
             blocked_checkbox.hide()
             constraints_checkbox.hide()
 
             user_layout.addWidget(login_label)
-            user_layout.addWidget(admin_checkbox)
+            # user_layout.addWidget(admin_checkbox)
             user_layout.addWidget(blocked_checkbox)
             user_layout.addWidget(constraints_checkbox)
 
@@ -356,9 +372,9 @@ class ViewUsersDialog(QDialog):
         # Создание и добавление новых элементов в макет для отображения информации о пользователе
         login_label = QLabel(f'Логин: {selected_user.username}', self.user_info_block)
 
-        admin_checkbox = QCheckBox('Администратор', self.user_info_block)
-        admin_checkbox.setChecked(selected_user.is_admin)
-        admin_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_admin=state == Qt.Checked))
+        # admin_checkbox = QCheckBox('Администратор', self.user_info_block)
+        # admin_checkbox.setChecked(selected_user.is_admin)
+        # admin_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, is_admin=state == Qt.Checked))
 
         blocked_checkbox = QCheckBox('Заблокирован', self.user_info_block)
         blocked_checkbox.setEnabled(False) if selected_user.is_admin else blocked_checkbox.setEnabled(True)
@@ -370,7 +386,7 @@ class ViewUsersDialog(QDialog):
         constraints_checkbox.stateChanged.connect(lambda state, u=selected_user: self.update_user(u, constraints_enabled=state == Qt.Checked))
 
         self.user_info_layout.addWidget(login_label)
-        self.user_info_layout.addWidget(admin_checkbox)
+        # self.user_info_layout.addWidget(admin_checkbox)
         self.user_info_layout.addWidget(blocked_checkbox)
         self.user_info_layout.addWidget(constraints_checkbox)
 
@@ -603,7 +619,20 @@ class MainWindow(QMainWindow):
         self.login_attempts = 0
         self.max_login_attempts = 3
 
+        # Добавляем меню
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu('Файл')
+
+        # Подменю "Справка" с командой "О программе"
+        help_menu = menu_bar.addMenu('Справка')
+        about_action = QAction('О программе', self)
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+
         self.init_ui()
+
+    def show_about_dialog(self):
+        QMessageBox.about(self, 'О программе', 'Савельев Антон, ИДБ-20-07, 18 вариант')
 
     def init_ui(self):
         auth_widget = QWidget(self)
@@ -824,7 +853,12 @@ class AuthPass(QWidget):
         if entered_password == 'access':
             password_form.hide()
             QMessageBox.information(self, 'Разблокировка базы','Пароль верный. Разблокировка базы данных.')
-            decrypt_file(file_encrypted, key)
+            try:
+                decrypt_file(file_encrypted, key)
+                # load_users_from_file('users.txt')
+            except:
+                QMessageBox.warning(self, 'Ошибка', 'Дешифровка не выполнена! Закрытие программы')
+                sys.exit()
             load_users_from_file('users.txt')
             main_window.show()
         else:
@@ -837,11 +871,18 @@ if __name__ == '__main__':
     file_encrypted = 'file_encrypted.txt'
     password = 'fffffrre'
 
+
+    
+    if not os.path.exists('secret.key'):
+        generate_key(password)
+    key = load_key()
+
+    
     
 
-    if not os.path.exists('secret.key'):
-        generate_key()
-    key = load_key()
+    if not os.path.exists(file_encrypted) and not os.path.exists(file):
+        load_users_from_file_with_out_decrypt(file)
+        encrypt_file(file, key)
 
     if os.path.getsize(file_encrypted) == 0:
         try:
